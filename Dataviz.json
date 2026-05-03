@@ -1,0 +1,257 @@
+{
+  "name": "Dataviz",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sirene-mcp-v2",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "77dcee05-a957-4479-800c-c5c6ce5d23f6",
+      "name": "Webhook",
+      "webhookId": "sirene-mcp-v2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.question }}",
+        "options": {
+          "systemMessage": "Tu es un expert en extraction d'intention pour interroger la base SIRENE française.\n\nTon unique rôle est d'analyser la question et de retourner UNIQUEMENT un JSON valide.\n\nStructure exacte :\n{\n  \"secteur\": \"mot-clé court\",\n  \"zone\": \"france\" ou \"idf\" ou code département ex: \"75\",\n  \"departement\": null ou code département ex: \"75\",\n  \"type_question\": \"volume\" ou \"repartition\" ou \"top\",\n  \"type_graphique\": \"bar\" ou \"treemap\" ou \"pie\",\n  \"zone_label\": \"description lisible\"\n}\n\nTRADUCTION SECTEURS :\nTECH / INFORMATIQUE / DIGITAL → secteur = \"informatique\"\nTRANSPORT / LOGISTIQUE → secteur = \"transport\"\nSANTÉ / MÉDECIN / MÉDICAL → secteur = \"médecin\"\nCONSTRUCTION / BTP → secteur = \"construction\"\nRESTAURATION / RESTAURANT → secteur = \"restaurant\"\nFINANCE / BANQUE → secteur = \"banque\"\nCONSEIL / CONSULTING → secteur = \"conseil\"\nCOMMERCE / VENTE → secteur = \"commerce\"\nIMMOBILIER → secteur = \"immobilier\"\nFORMATION / ÉDUCATION → secteur = \"formation\"\nJURIDIQUE / AVOCAT → secteur = \"avocat\"\nMARKETING / PUBLICITÉ → secteur = \"publicité\"\nSÉCURITÉ → secteur = \"sécurité\"\nTOURISME → secteur = \"tourisme\"\nAutre → utilise le mot principal de la question\n\nGÉOGRAPHIE :\n\"paris\", \"75\" → zone=\"75\", departement=\"75\", zone_label=\"Paris (75)\"\n\"île-de-france\", \"idf\" → zone=\"idf\", departement=null, zone_label=\"Île-de-France\"\n\"lyon\", \"rhône\" → zone=\"69\", departement=\"69\", zone_label=\"Lyon (69)\"\n\"marseille\" → zone=\"13\", departement=\"13\", zone_label=\"Marseille (13)\"\n\"bordeaux\", \"gironde\" → zone=\"33\", departement=\"33\", zone_label=\"Bordeaux (33)\"\n\"toulouse\" → zone=\"31\", departement=\"31\", zone_label=\"Toulouse (31)\"\n\"nantes\" → zone=\"44\", departement=\"44\", zone_label=\"Nantes (44)\"\n\"lille\", \"nord\" → zone=\"59\", departement=\"59\", zone_label=\"Lille (59)\"\nSans zone précise → zone=\"france\", departement=null, zone_label=\"Toute la France\"\n\nGRAPHIQUE :\n\"répartition\", \"par département\" → type_graphique=\"bar\"\n\"secteur\", \"activité\", \"top\" → type_graphique=\"treemap\"\n\"part\", \"pourcentage\" → type_graphique=\"pie\"\nSinon → type_graphique=\"bar\"\n\nRETOURNE UNIQUEMENT LE JSON. Rien d'autre."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "3e68d2c0-3f2f-4bf9-b8a3-58f2e2d438b5",
+      "name": "Agent 1 — Extraction"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        208,
+        208
+      ],
+      "id": "183696b4-9e78-4bc3-9097-94ea8413bfef",
+      "name": "Groq — Agent 1",
+      "credentials": {
+        "groqApi": {
+          "id": "c5SP4KAR1SODvKO9",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse le JSON de l'Agent 1\nconst raw = $input.first().json.output || \"\";\nlet params;\ntry {\n  const cleaned = raw.replace(/```json/gi, \"\").replace(/```/g, \"\").trim();\n  params = JSON.parse(cleaned);\n} catch(e) {\n  params = { secteur: \"transport\", zone: \"france\", departement: null, type_graphique: \"bar\", zone_label: \"Toute la France\" };\n}\n\nconst zone        = params.zone        || \"france\";\nconst secteur     = params.secteur     || \"transport\";\nconst departement = params.departement || null;\nconst type_graphique = params.type_graphique || \"bar\";\nconst type_question  = params.type_question  || \"volume\";\nconst zone_label     = params.zone_label     || \"Toute la France\";\nconst question = $('Webhook').first().json.body.question || \"\";\n\n// Détermine si on filtre par département dans l'API\nconst use_dept = departement && zone !== \"france\" && zone !== \"idf\";\n\nreturn [{ json: {\n  question, secteur, zone, departement, use_dept,\n  type_graphique, type_question, zone_label,\n  params_ia: params\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        0
+      ],
+      "id": "6872ed28-1e4f-4824-b7ff-5d7d5a28c047",
+      "name": "Parse JSON"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tu es un analyste économique expert.\n\nQuestion : {{ $('Webhook').first().json.body.question }}\nSecteur : {{ $json.secteur }}\nZone : {{ $json.zone_label }}\n\nDonnées SIRENE (échantillon de 25 max) :\n- Entreprises trouvées : {{ $json.n_total }}\n- Top départements : {{ JSON.stringify($json.top_departements.slice(0,5)) }}\n- Top secteurs APE : {{ JSON.stringify($json.top_secteurs.slice(0,5)) }}\n- Top communes : {{ JSON.stringify($json.top_communes.slice(0,3)) }}\n\nRédige une synthèse de 5 à 8 lignes en français qui :\n1. Répond à la question avec les chiffres clés\n2. Identifie les tendances géographiques\n3. Commente les secteurs APE dominants\n4. Mentionne une limite des données SIRENE\n5. Conclut avec une observation utile\n\nPas de JSON, pas de markdown, pas de titre. Texte uniquement.",
+        "options": {
+          "systemMessage": "Tu es un analyste économique. Les données viennent d'un échantillon de 25 entreprises max — précise toujours que c'est un échantillon. Réponds en français professionnel."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        928,
+        0
+      ],
+      "id": "ad8b7212-e758-468e-8ee2-1082043224d3",
+      "name": "Agent 2 — Analyse"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        928,
+        224
+      ],
+      "id": "2cf7259d-00f2-4ad9-af0f-084f3ae9e1ae",
+      "name": "Groq — Agent 2",
+      "credentials": {
+        "groqApi": {
+          "id": "c5SP4KAR1SODvKO9",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const stats    = $('Code in JavaScript').first().json;\nconst analyse  = $('Agent 2 — Analyse').first().json.output || \"Analyse non disponible.\";\nconst question = $('Webhook').first().json.body.question || \"\";\nconst params   = stats.params_ia || {};\n\nconst top_departements = stats.top_departements || [];\nconst top_secteurs     = stats.top_secteurs     || [];\nconst top_communes     = stats.top_communes     || [];\nconst n_total          = stats.n_total          || 0;\nconst secteur          = stats.secteur          || \"\";\nconst zone_label       = stats.zone_label       || \"France\";\nconst type_graphique   = stats.type_graphique   || \"bar\";\n\nconst top1     = top_departements[0] || {};\nconst top_ape1 = top_secteurs[0]     || {};\n\nconst viz = {\n  type_graphique, secteur, zone_label,\n  bar:     { titre: `Entreprises \"${secteur}\" — ${zone_label}`, data: top_departements.map(d => ({ label: d.nom || d.departement, value: d.nb_entreprises })) },\n  treemap: { titre: `Secteurs APE — \"${secteur}\"`, data: top_secteurs.map(s => ({ label: s.label, value: s.nb_entreprises })) },\n  pie:     { titre: `Répartition — \"${secteur}\"`, data: top_departements.slice(0,8).map(d => ({ label: d.nom || d.departement, value: d.nb_entreprises })) },\n  commune: { titre: `Top communes — \"${secteur}\"`, data: top_communes.map(c => ({ label: c.commune, value: c.nb_entreprises })) }\n};\n\nreturn [{ json: {\n  analyse, n_total, zone_label, secteur, question,\n  kpi: {\n    n_total,\n    n_departements: top_departements.length,\n    top_dept_nom:   top1.nom || top1.departement || \"—\",\n    top_dept_nb:    top1.nb_entreprises || 0,\n    top_ape_label:  top_ape1.label || \"—\",\n    top_ape_nb:     top_ape1.nb_entreprises || 0\n  },\n  top_departements, top_secteurs, top_communes,\n  viz, params_ia: params,\n  generated_at: new Date().toISOString()\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "3843318d-edd1-486e-9f79-9db6149b4c7e",
+      "name": "Assemblage final"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1408,
+        0
+      ],
+      "id": "f800250d-0755-4d0a-965e-8d3eed9e1920",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const params      = $input.first().json;\nconst secteur     = params.secteur     || \"transport\";\nconst zone        = params.zone        || \"france\";\nconst use_dept    = params.use_dept    || false;\nconst departement = params.departement || null;\nconst MCP_URL     = \"http://127.0.0.1:8000/mcp\";\n\n// Parse la réponse SSE string → companies[]\nfunction parseSSECompanies(raw) {\n  const dataLine = String(raw).split(\"\\n\").find(l => l.trim().startsWith(\"data:\"));\n  if (!dataLine) return [];\n  try {\n    const json    = JSON.parse(dataLine.replace(/^data:\\s*/, \"\").trim());\n    const text    = json?.result?.content?.[0]?.text || \"{}\";\n    const data    = JSON.parse(text);\n    return data.companies || [];\n  } catch(e) { return []; }\n}\n\nfunction parseSSEStats(raw) {\n  const dataLine = String(raw).split(\"\\n\").find(l => l.trim().startsWith(\"data:\"));\n  if (!dataLine) return {};\n  try {\n    const json = JSON.parse(dataLine.replace(/^data:\\s*/, \"\").trim());\n    const text = json?.result?.content?.[0]?.text || \"{}\";\n    return JSON.parse(text);\n  } catch(e) { return {}; }\n}\n\nasync function callMCP(toolName, args) {\n  return await this.helpers.httpRequest({\n    method: \"POST\", url: MCP_URL,\n    headers: { \"Content-Type\": \"application/json\", \"Accept\": \"application/json, text/event-stream\" },\n    body: JSON.stringify({ jsonrpc:\"2.0\", id:1, method:\"tools/call\", params:{ name:toolName, arguments:args } }),\n    returnFullResponse: false\n  });\n}\n\n// Étape 1 : search_companies\nconst r1 = await callMCP.call(this, \"search_companies\", {\n  query: secteur,\n  departement: (use_dept && departement) ? String(departement) : \"\",\n  per_page: 25\n});\nconst companies = parseSSECompanies(r1);\n\n// Étape 2 : filter_by_geography\nconst r2 = await callMCP.call(this, \"filter_by_geography\", {\n  companies_json: JSON.stringify({ companies }),\n  zone: zone\n});\nconst filtered = parseSSECompanies(r2).length > 0 \n  ? parseSSECompanies(r2) \n  : (() => { try { return JSON.parse(parseSSEStats(r2).companies ? JSON.stringify(parseSSEStats(r2).companies) : \"[]\"); } catch(e) { return companies; } })();\n\n// Étape 3 : compute_statistics\nconst r3 = await callMCP.call(this, \"compute_statistics\", {\n  companies_json: JSON.stringify({ companies: filtered.length > 0 ? filtered : companies }),\n  top_n: 10\n});\nconst stats = parseSSEStats(r3);\nconst toArr = v => Array.isArray(v) ? v : [];\n\nreturn [{ json: {\n  n_total:          stats.n_total          || 0,\n  top_departements: toArr(stats.top_departements),\n  top_secteurs:     toArr(stats.top_secteurs),\n  top_communes:     toArr(stats.top_communes),\n  zone:             params.zone,\n  zone_label:       params.zone_label,\n  secteur:          params.secteur,\n  type_graphique:   params.type_graphique,\n  type_question:    params.type_question,\n  params_ia:        params.params_ia\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        0
+      ],
+      "id": "8b1fbffa-6886-49f8-b305-033aef8a008a",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Agent 1 — Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1 — Extraction": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq — Agent 1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1 — Extraction",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2 — Analyse": {
+      "main": [
+        [
+          {
+            "node": "Assemblage final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq — Agent 2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 2 — Analyse",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemblage final": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Agent 2 — Analyse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "06ac5e6a-feaa-42fc-945c-876043e69b4c",
+  "meta": {
+    "instanceId": "8446430a29deb9a6bd7c2c831d9c308de0c3abc15c7085f8f8a75c78d6f99693"
+  },
+  "id": "EQME6J05pS98g9Fw",
+  "tags": []
+}
