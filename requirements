@@ -1,0 +1,6 @@
+Fastmcp
+uvicorn
+httpx
+streamlit
+plotly
+requests
